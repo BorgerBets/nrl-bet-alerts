@@ -5,7 +5,7 @@ API_KEY = os.getenv("ODDS_API_KEY")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 1. Fetch H2H, Spreads, and Totals from The Odds API
+# Fetch H2H, Spreads, and Totals for the entire week
 url = f"https://api.the-odds-api.com/v4/sports/rugbyleague_nrl/odds/?apiKey={API_KEY}&regions=au&markets=h2h,spreads,totals"
 response = requests.get(url)
 
@@ -15,12 +15,23 @@ if response.status_code != 200:
 
 games = response.json()
 if not games:
-    print("No upcoming NRL matches found.")
+    print("No upcoming NRL matches found for this week.")
     exit(0)
 
-message_lines = ["🏉 *NRL 3-LEG SAME GAME MULTI OPTIONS* 🏉\n"]
+def send_telegram_message(text):
+    telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    requests.post(telegram_url, json=payload)
 
-for game in games[:4]:  # Generates SGMs for next 4 games
+# Header
+send_telegram_message("🗓️ *NRL WEEKLY ROUND - 3-LEG SGM OPTIONS* 🏉")
+
+# Process every match in the upcoming round
+for game in games:
     home = game.get("home_team")
     away = game.get("away_team")
     bookmakers = game.get("bookmakers", [])
@@ -39,36 +50,24 @@ for game in games[:4]:  # Generates SGMs for next 4 games
     if not (h2h_outcomes and spread_outcomes and totals_outcomes):
         continue
         
-    # Sort H2H to find favorite
+    # Favorite vs Underdog selection
     fav = min(h2h_outcomes, key=lambda x: x["price"])
-    dog = max(h2h_outcomes, key=lambda x: x["price"])
     
-    # 3 Leg SGM Construction
-    leg1 = f"Leg 1: {fav['name']} Win (H2H @ ${fav['price']})"
+    # 3-Leg Multi Options
+    leg1 = f"Leg 1: {fav['name']} H2H (@ ${fav['price']})"
     
-    # Leg 2: Spread option (Give start to underdog or safe cover)
     leg2_outcome = spread_outcomes[0]
     leg2 = f"Leg 2: {leg2_outcome['name']} {leg2_outcome.get('point', '')} Line (@ ${leg2_outcome['price']})"
     
-    # Leg 3: Match Totals option
     leg3_outcome = totals_outcomes[0]
     leg3 = f"Leg 3: Total Points {leg3_outcome['name']} {leg3_outcome.get('point', '')} (@ ${leg3_outcome['price']})"
     
-    message_lines.append(
+    match_msg = (
         f"🔥 *{home} vs {away}* ({bm_name})\n"
         f"  ├ 1️⃣ {leg1}\n"
         f"  ├ 2️⃣ {leg2}\n"
         f"  └ 3️⃣ {leg3}\n"
-        f"  🎯 *Build SGM on Sportsbet/TAB*\n"
+        f"  🎯 *Build SGM on Sportsbet/TAB*"
     )
-
-message_text = "\n".join(message_lines)
-
-# 2. Push to Telegram
-telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-payload = {
-    "chat_id": CHAT_ID,
-    "text": message_text,
-    "parse_mode": "Markdown"
-}
-requests.post(telegram_url, json=payload)
+    
+    send_telegram_message(match_msg)
