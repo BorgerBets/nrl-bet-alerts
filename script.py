@@ -11,7 +11,7 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not all([API_KEY, BOT_TOKEN, CHAT_ID, GEMINI_API_KEY]):
-    print("Error: Required environment variables are missing.")
+    print("Error: Missing one or more required environment variables.")
     exit(1)
 
 # Initialize Gemini Client
@@ -22,14 +22,16 @@ session = requests.Session()
 retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
 session.mount("https://", HTTPAdapter(max_retries=retries))
 
-def send_telegram_message(text):
+def send_telegram_message(text, parse_mode="HTML"):
     telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
+    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": parse_mode}
     try:
         res = session.post(telegram_url, json=payload, timeout=10)
         res.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"Failed to send Telegram message: {e}")
+        if res is not None:
+            print(f"Telegram response: {res.text}")
 
 # Fetch Odds Data
 url = f"https://api.the-odds-api.com/v4/sports/rugbyleague_nrl/odds/?apiKey={API_KEY}&regions=au&markets=h2h,spreads,totals"
@@ -45,7 +47,8 @@ if not games:
     print("No upcoming NRL matches found.")
     exit(0)
 
-send_telegram_message("🤖 *NRL WEEKLY ROUND - GEMINI AI 3-LEG SGM ANALYSIS* 🏉")
+# Send Header using simple HTML
+send_telegram_message("🤖 <b>NRL WEEKLY ROUND - GEMINI AI 3-LEG SGM ANALYSIS</b> 🏉")
 
 for game in games:
     home_team = game.get("home_team")
@@ -66,7 +69,6 @@ for game in games:
     if not (h2h and spreads and totals):
         continue
 
-    # Prepare prompt for Gemini
     match_context = f"""
     Match: {home_team} vs {away_team} ({bm_name})
     Head-to-Head Odds: {[{'team': o['name'], 'price': o['price']} for o in h2h]}
@@ -75,18 +77,18 @@ for game in games:
     """
 
     prompt = f"""
-    You are an expert NRL sports analyst.
-    Analyze the following NRL match fixture and available market lines:
+    You are an NRL sports betting analyst.
+    Analyze the following match fixture and available odds:
     {match_context}
 
-    Select the 3 most logical, correlated legs for a 3-leg Same Game Multi (SGM).
+    Select 3 logical, correlated legs for a 3-leg Same Game Multi (SGM).
     
-    Format the response strictly like this:
-    🔥 *{home_team} vs {away_team}* ({bm_name})
+    Format the response strictly in plain text / basic HTML like this:
+    🔥 <b>{home_team} vs {away_team}</b> ({bm_name})
       ├ 1️⃣ Leg 1: [Selection & Odds]
       ├ 2️⃣ Leg 2: [Selection & Odds]
       └ 3️⃣ Leg 3: [Selection & Odds]
-      💡 *AI Rationale:* [1-2 concise sentences explaining why this SGM makes tactical sense based on current odds]
+      💡 <b>AI Rationale:</b> [1-2 concise sentences explaining the tactical logic]
     """
 
     try:
@@ -94,6 +96,7 @@ for game in games:
             model='gemini-2.5-flash',
             contents=prompt
         )
-        send_telegram_message(ai_response.text)
+        print(f"Generated analysis for {home_team} vs {away_team}")
+        send_telegram_message(ai_response.text, parse_mode="HTML")
     except Exception as e:
         print(f"Gemini generation failed for {home_team} vs {away_team}: {e}")
