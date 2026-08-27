@@ -2,6 +2,9 @@ name: NRL Betting Alerts
 
 on:
   workflow_dispatch:
+  schedule:
+    # Runs every Wednesday at 00:00 UTC (10:00 AM AEST)
+    - cron: '0 0 * * 3'
 
 jobs:
   run-alerts:
