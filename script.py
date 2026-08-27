@@ -5,8 +5,8 @@ API_KEY = os.getenv("ODDS_API_KEY")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 1. Fetch H2H Odds from The Odds API
-url = f"https://api.the-odds-api.com/v4/sports/rugbyleague_nrl/odds/?apiKey={API_KEY}&regions=au&markets=h2h"
+# 1. Fetch H2H, Spreads, and Totals from The Odds API
+url = f"https://api.the-odds-api.com/v4/sports/rugbyleague_nrl/odds/?apiKey={API_KEY}&regions=au&markets=h2h,spreads,totals"
 response = requests.get(url)
 
 if response.status_code != 200:
@@ -18,30 +18,53 @@ if not games:
     print("No upcoming NRL matches found.")
     exit(0)
 
-# 2. Format output message
-message_lines = ["🏉 *NRL Upcoming Match Odds* 🏉\n"]
+message_lines = ["🏉 *NRL 3-LEG SAME GAME MULTI OPTIONS* 🏉\n"]
 
-for game in games[:5]:  # Formats the next 5 upcoming matches
-    home_team = game.get("home_team")
-    away_team = game.get("away_team")
-    
-    # Extract bookmaker odds (uses first available AU bookmaker)
+for game in games[:4]:  # Generates SGMs for next 4 games
+    home = game.get("home_team")
+    away = game.get("away_team")
     bookmakers = game.get("bookmakers", [])
-    odds_str = "Odds currently unavailable"
     
-    if bookmakers:
-        bm_name = bookmakers[0].get("title")
-        markets = bookmakers[0].get("markets", [])
-        if markets:
-            outcomes = markets[0].get("outcomes", [])
-            odds_list = [f"{o['name']}: {o['price']}" for o in outcomes]
-            odds_str = f"({bm_name}) " + " | ".join(odds_list)
-            
-    message_lines.append(f"• *{home_team} vs {away_team}*\n  └ {odds_str}\n")
+    if not bookmakers:
+        continue
+        
+    bm = bookmakers[0]
+    bm_name = bm.get("title", "Sportsbet")
+    markets = {m["key"]: m["outcomes"] for m in bm.get("markets", [])}
+    
+    h2h_outcomes = markets.get("h2h", [])
+    spread_outcomes = markets.get("spreads", [])
+    totals_outcomes = markets.get("totals", [])
+    
+    if not (h2h_outcomes and spread_outcomes and totals_outcomes):
+        continue
+        
+    # Sort H2H to find favorite
+    fav = min(h2h_outcomes, key=lambda x: x["price"])
+    dog = max(h2h_outcomes, key=lambda x: x["price"])
+    
+    # 3 Leg SGM Construction
+    leg1 = f"Leg 1: {fav['name']} Win (H2H @ ${fav['price']})"
+    
+    # Leg 2: Spread option (Give start to underdog or safe cover)
+    leg2_outcome = spread_outcomes[0]
+    leg2 = f"Leg 2: {leg2_outcome['name']} {leg2_outcome.get('point', '')} Line (@ ${leg2_outcome['price']})"
+    
+    # Leg 3: Match Totals option
+    leg3_outcome = totals_outcomes[0]
+    leg3 = f"Leg 3: Total Points {leg3_outcome['name']} {leg3_outcome.get('point', '')} (@ ${leg3_outcome['price']})"
+    
+    message_lines.append(
+        f"🔥 *{home} vs {away}* ({bm_name})\n"
+        f"  ├ 1️⃣ {leg1}\n"
+        f"  ├ 2️⃣ {leg2}\n"
+        f"  └ 3️⃣ {leg3}\n"
+        f"  🎯 *Build SGM on Sportsbet/TAB*\n"
+    )
 
 message_text = "\n".join(message_lines)
 
-# 3. Send formatted message to Telegram
+# 2. Push to Telegram
 telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 payload = {
     "chat_id": CHAT_ID,
