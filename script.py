@@ -22,9 +22,10 @@ session = requests.Session()
 retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
 session.mount("https://", HTTPAdapter(max_retries=retries))
 
-def send_telegram_message(text, parse_mode="HTML"):
+def send_telegram_message(text):
+    """Sends a plain text message to Telegram to avoid formatting/entity errors."""
     telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": parse_mode}
+    payload = {"chat_id": CHAT_ID, "text": text}  # No parse_mode means plain text safety
     try:
         res = session.post(telegram_url, json=payload, timeout=10)
         res.raise_for_status()
@@ -47,8 +48,8 @@ if not games:
     print("No upcoming NRL matches found.")
     exit(0)
 
-# Send Header using simple HTML
-send_telegram_message("🤖 <b>NRL WEEKLY ROUND - GEMINI AI 3-LEG SGM ANALYSIS</b> 🏉")
+# Send Header
+send_telegram_message("NRL WEEKLY ROUND - GEMINI AI 3-LEG SGM ANALYSIS")
 
 for game in games:
     home_team = game.get("home_team")
@@ -83,12 +84,12 @@ for game in games:
 
     Select 3 logical, correlated legs for a 3-leg Same Game Multi (SGM).
     
-    Format the response strictly in plain text / basic HTML like this:
-    🔥 <b>{home_team} vs {away_team}</b> ({bm_name})
-      ├ 1️⃣ Leg 1: [Selection & Odds]
-      ├ 2️⃣ Leg 2: [Selection & Odds]
-      └ 3️⃣ Leg 3: [Selection & Odds]
-      💡 <b>AI Rationale:</b> [1-2 concise sentences explaining the tactical logic]
+    Format the response in clean plain text using simple layout like this:
+    {home_team} vs {away_team} ({bm_name})
+    - Leg 1: [Selection & Odds]
+    - Leg 2: [Selection & Odds]
+    - Leg 3: [Selection & Odds]
+    - AI Rationale: [1-2 concise sentences]
     """
 
     try:
@@ -97,6 +98,6 @@ for game in games:
             contents=prompt
         )
         print(f"Generated analysis for {home_team} vs {away_team}")
-        send_telegram_message(ai_response.text, parse_mode="HTML")
+        send_telegram_message(ai_response.text)
     except Exception as e:
         print(f"Gemini generation failed for {home_team} vs {away_team}: {e}")
