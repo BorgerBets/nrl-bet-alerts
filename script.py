@@ -70,7 +70,7 @@ for game in games:
 
     # Priority 1: Check Spreads belonging strictly to the H2H favourite
     if spreads:
-        team_spreads = [s for s in spreads if s.get("name"] == fav_team]
+        team_spreads = [s for s in spreads if s.get("name") == fav_team]
         if team_spreads:
             # Find a spread combo that fits under the $2.50 cap (prioritising the lowest/safest line)
             valid_spreads = [s for s in team_spreads if round(best_h2h["price"] * s["price"], 2) <= 2.50]
