@@ -62,38 +62,46 @@ for game in games:
     if not h2h:
         continue
 
-    # Dynamically find the most likely (shortest-priced / highest confidence) outcomes
+    # Find the shortest-priced H2H favourite
     best_h2h = min(h2h, key=lambda x: x["price"])
-    best_spread = min(spreads, key=lambda x: x["price"]) if spreads else None
-    best_total = min(totals, key=lambda x: x["price"]) if totals else None
-
+    fav_team = best_h2h["name"]
+    
     match_msg = None
 
-    # Priority 1: Try H2H + Spread (The most common high-probability SGM structure)
-    if best_spread:
-        odds_h2h_spread = round(best_h2h["price"] * best_spread["price"], 2)
-        if odds_h2h_spread <= 2.50:
+    # Priority 1: Check Spreads belonging strictly to the H2H favourite
+    if spreads:
+        team_spreads = [s for s in spreads if s.get("name"] == fav_team]
+        if team_spreads:
+            # Find a spread combo that fits under the $2.50 cap (prioritising the lowest/safest line)
+            valid_spreads = [s for s in team_spreads if round(best_h2h["price"] * s["price"], 2) <= 2.50]
+            if valid_spreads:
+                best_spread = min(valid_spreads, key=lambda x: x["price"])
+            else:
+                # Fallback: grab the lowest available price for this team's line to get as close to target as possible
+                best_spread = min(team_spreads, key=lambda x: x["price"])
+            
+            odds_h2h_spread = round(best_h2h["price"] * best_spread["price"], 2)
             match_msg = (
                 f"🔥 {home_team} vs {away_team} ({bm_name})\n"
-                f"  ├ Leg 1: {best_h2h['name']} H2H (@ ${best_h2h['price']})\n"
+                f"  ├ Leg 1: {fav_team} H2H (@ ${best_h2h['price']})\n"
                 f"  └ Leg 2: {best_spread['name']} {best_spread.get('point', '')} (@ ${best_spread['price']})\n"
                 f"📊 Combined 2-Leg Odds: ~${odds_h2h_spread}\n"
                 f"🎯 Build SGM on {bm_name}"
             )
 
-    # Priority 2: Fallback to H2H + Total Points if spread combo isn't available or doesn't fit
-    if not match_msg and best_total:
+    # Priority 2: Fallback to Total Points if no valid spread was found
+    if not match_msg and totals:
+        best_total = min(totals, key=lambda x: x["price"])
         odds_h2h_total = round(best_h2h["price"] * best_total["price"], 2)
-        if odds_h2h_total <= 2.50:
-            match_msg = (
-                f"🔥 {home_team} vs {away_team} ({bm_name})\n"
-                f"  ├ Leg 1: {best_h2h['name']} H2H (@ ${best_h2h['price']})\n"
-                f"  └ Leg 2: Total Points {best_total['name']} {best_total.get('point', '')} (@ ${best_total['price']})\n"
-                f"📊 Combined 2-Leg Odds: ~${odds_h2h_total}\n"
-                f"🎯 Build SGM on {bm_name}"
-            )
+        match_msg = (
+            f"🔥 {home_team} vs {away_team} ({bm_name})\n"
+            f"  ├ Leg 1: {fav_team} H2H (@ ${best_h2h['price']})\n"
+            f"  └ Leg 2: Total Points {best_total['name']} {best_total.get('point', '')} (@ ${best_total['price']})\n"
+            f"📊 Combined 2-Leg Odds: ~${odds_h2h_total}\n"
+            f"🎯 Build SGM on {bm_name}"
+        )
 
-    # Dispatch to Telegram if a valid low-risk configuration is locked in
+    # Dispatch to Telegram
     if match_msg:
         send_telegram_message(match_msg)
         processed_count += 1
